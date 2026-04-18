@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dino Run Kalcer - Fair Play Edition</title>
+    <style>
+        body {
+            margin: 0; display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            height: 100vh; background-color: #f7f7f7;
+            font-family: 'Courier New', Courier, monospace; overflow: hidden;
+        }
+
+        #gameContainer {
+            position: relative; width: 800px; height: 200px;
+            background-color: #fff; border-bottom: 3px solid #535353; overflow: hidden;
+            display: none; 
+        }
+
+        #playOverlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.8); display: flex; justify-content: center;
+            align-items: center; z-index: 10;
+        }
+
+        #startBtn {
+            padding: 15px 35px; font-size: 20px; font-weight: bold;
+            background: #2ecc71; color: white; border: none; cursor: pointer;
+            border-radius: 8px; box-shadow: 0 5px 0 #27ae60;
+        }
+
+        #dino { position: absolute; bottom: 0; left: 50px; width: 40px; height: 40px; background-color: #535353; }
+        #cactus { position: absolute; bottom: 0; right: -50px; width: 20px; height: 45px; background-color: #ff4d4d; }
+
+        #ui-layer { 
+            position: absolute; top: 10px; width: 100%; 
+            display: flex; justify-content: space-between; padding: 0 20px; box-sizing: border-box; 
+        }
+
+        #leaderboard { 
+            margin-top: 25px; width: 500px; background: white; 
+            padding: 15px; border: 1px solid #ddd; text-align: center; 
+            box-shadow: 0 10px 20px rgba(0,0,0,0.05); border-radius: 10px;
+            cursor: pointer;
+        }
+
+        #fullLeaderboardModal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); display: none; justify-content: center;
+            align-items: center; z-index: 200;
+        }
+        .full-lb-content {
+            background: white; width: 90%; max-width: 600px; max-height: 80vh;
+            border-radius: 15px; padding: 20px; position: relative; overflow-y: auto;
+        }
+        .close-lb { position: sticky; top: 0; float: right; font-size: 30px; font-weight: bold; color: #ff4d4d; cursor: pointer; }
+
+        table { width: 100%; font-size: 14px; margin-top: 10px; border-collapse: collapse; }
+        th, td { border-bottom: 1px solid #eee; padding: 10px; text-align: center; }
+
+        #nameModal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); display: none; justify-content: center; align-items: center; z-index: 100;
+        }
+        .modal-content { background: white; padding: 40px; border-radius: 15px; text-align: center; width: 350px; }
+        input { padding: 12px; font-size: 16px; margin: 15px 0; width: 90%; border: 2px solid #ddd; border-radius: 6px; }
+        .reg-btn { padding: 12px 30px; background: #535353; color: white; border: none; cursor: pointer; border-radius: 6px; }
+
+        .animate-jump { animation: jump 0.5s linear; }
+        @keyframes jump { 0%, 100% { bottom: 0; } 30%, 70% { bottom: 115px; } }
+    </style>
+</head>
+<body>
+
+    <div id="nameModal">
+        <div class="modal-content">
+            <h2 style="margin-top:0;">DINO RUN KALCER</h2>
+            <p>Masukkan Nama:</p>
+            <input type="text" id="playerNameInput" placeholder="Nama kamu..." maxlength="12">
+            <br>
+            <button class="reg-btn" id="registerBtn">MULAI</button>
+        </div>
+    </div>
+
+    <div id="gameContainer">
+        <div id="playOverlay"><button id="startBtn">START RUN ▶</button></div>
+        <div id="ui-layer">
+            <div id="score" style="font-weight: bold; font-size: 18px;">0.00 km</div>
+            <div>
+                <span id="liveRank" style="font-size: 12px; color: #e67e22; font-weight: bold;">NEWBIE</span> |
+                <span id="displayPlayerName" style="color: #27ae60; font-weight: bold;">-</span>
+                <button onclick="changeName()" style="padding: 2px 5px; font-size: 9px; cursor: pointer; border: none; background: #eee;">Reset</button>
+            </div>
+        </div>
+        <div id="dino"></div>
+        <div id="cactus"></div>
+    </div>
+
+    <div id="leaderboard" onclick="openFullLeaderboard()">
+        <strong>🏆 LEADERBOARD RANK 🏆</strong>
+        <table id="leaderboardTableMini"><tr><td>Loading data...</td></tr></table>
+    </div>
+
+    <div id="fullLeaderboardModal">
+        <div class="full-lb-content">
+            <span class="close-lb" onclick="closeFullLeaderboard()">&times;</span>
+            <h2 style="text-align: center;">TOP 100 HALL OF FAME</h2>
+            <table id="leaderboardTableFull"></table>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getDatabase, ref, get, set, onValue, query, orderByChild, limitToLast } 
+        from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDBsHtU2LdpxTtUHSCu9MN6cDfkg2mqG2U",
+            authDomain: "apajeha-69040.firebaseapp.com",
+            databaseURL: "https://apajeha-69040-default-rtdb.asia-southeast1.firebasedatabase.app/",
+            projectId: "apajeha-69040",
+            storageBucket: "apajeha-69040.firebasestorage.app",
+            messagingSenderId: "197168693587",
+            appId: "1:197168693587:web:cb2f9119a08f19d96b21a6",
+            measurementId: "G-QM5PB9SSWZ"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        const dbRef = ref(db, 'leaderboard');
+
+        // DAFTAR RANK SESUAI PERMINTAAN
+        function getRank(km) {
+            if (km >= 1000) return "GOD 👑";
+            if (km >= 950) return "MT IMO 🔥";
+            if (km >= 810) return "MYTICAL GLORY ✨";
+            if (km >= 700) return "MYTHIC 🛡️";
+            if (km >= 500) return "LEGEND 🎖️";
+            if (km >= 420) return "GRANDMASTER";
+            if (km >= 300) return "MASTER";
+            if (km >= 230) return "EPIK";
+            if (km >= 180) return "PELARI KALCER 🤣";
+            if (km >= 100) return "PELARI PRO";
+            if (km >= 50) return "PELARI SENIOR";
+            return "NEWBIE";
+        }
+
+        let currentPlayerName = "";
+        let distance = 0;
+        let isGameStarted = false;
+        let isGameOver = false;
+        let allScores = [];
+
+        // --- GAMEPLAY CONFIG (FIXED SPEED) ---
+        const GAME_SPEED = 10; // Kecepatan tetap, tidak akan bertambah seiring jarak
+
+        window.openFullLeaderboard = () => { document.getElementById("fullLeaderboardModal").style.display = "flex"; renderFullTable(); };
+        window.closeFullLeaderboard = () => { document.getElementById("fullLeaderboardModal").style.display = "none"; };
+
+        function renderFullTable() {
+            let html = "<tr><th>Pos</th><th>Nama</th><th>Jarak</th><th>Rank</th></tr>";
+            allScores.slice(0, 100).forEach((p, i) => {
+                html += `<tr><td>#${i+1}</td><td><b>${p.name}</b></td><td>${p.score.toFixed(2)} km</td><td>${getRank(p.score)}</td></tr>`;
+            });
+            document.getElementById("leaderboardTableFull").innerHTML = html;
+        }
+
+        function init() {
+            const saved = localStorage.getItem("dinoPlayerName");
+            if (saved) { currentPlayerName = saved; startReady(); }
+            else { document.getElementById("nameModal").style.display = "flex"; }
+        }
+
+        function startReady() {
+            document.getElementById("displayPlayerName").innerText = currentPlayerName;
+            document.getElementById("nameModal").style.display = "none";
+            document.getElementById("gameContainer").style.display = "block";
+        }
+
+        document.getElementById("registerBtn").onclick = () => {
+            const n = document.getElementById("playerNameInput").value.trim();
+            if (n.length > 1) { localStorage.setItem("dinoPlayerName", n); currentPlayerName = n; startReady(); }
+        };
+
+        window.changeName = () => { localStorage.removeItem("dinoPlayerName"); location.reload(); };
+
+        document.getElementById("startBtn").onclick = () => {
+            document.getElementById("playOverlay").style.display = "none";
+            isGameStarted = true; isGameOver = false; distance = 0;
+            cactus.style.left = "800px";
+        };
+
+        // --- MAIN LOOP ---
+        setInterval(() => {
+            if (!isGameStarted || isGameOver) return;
+            
+            distance += 0.01;
+            document.getElementById("score").innerText = distance.toFixed(2) + " km";
+            document.getElementById("liveRank").innerText = getRank(distance);
+
+            let cl = parseInt(window.getComputedStyle(cactus).getPropertyValue("left"));
+            let dt = parseInt(window.getComputedStyle(dino).getPropertyValue("top"));
+
+            // Logika Gerak Kaktus dengan Kecepatan Stabil
+            if (cl < -30) { 
+                cactus.style.left = "800px"; 
+            } else { 
+                cactus.style.left = (cl - GAME_SPEED) + "px"; 
+            }
+
+            // Hitbox
+            if (cl < 90 && cl > 50 && dt >= 150) { isGameOver = true; finish(); }
+        }, 10);
+
+        async function finish() {
+            const userRef = ref(db, 'leaderboard/' + currentPlayerName);
+            const snap = await get(userRef);
+            if (!snap.val() || distance > snap.val().score) {
+                await set(userRef, { name: currentPlayerName, score: distance });
+            }
+            alert(`GAME OVER!\nSkor Akhir: ${distance.toFixed(2)} km\nRank: ${getRank(distance)}`);
+            location.reload();
+        }
+
+        onValue(query(dbRef, orderByChild('score'), limitToLast(100)), (snap) => {
+            if (!snap.exists()) return;
+            allScores = [];
+            snap.forEach(c => allScores.push(c.val()));
+            allScores.sort((a,b) => b.score - a.score);
+            let mini = "<tr><th>Pos</th><th>Nama</th><th>Rank</th></tr>";
+            allScores.slice(0, 5).forEach((p, i) => {
+                mini += `<tr><td>#${i+1}</td><td>${p.name}</td><td><small>${getRank(p.score)}</small></td></tr>`;
+            });
+            document.getElementById("leaderboardTableMini").innerHTML = mini;
+        });
+
+        function jump() { 
+            if (isGameStarted && !isGameOver && dino.classList != "animate-jump") { 
+                dino.classList.add("animate-jump"); 
+                setTimeout(() => dino.classList.remove("animate-jump"), 500);
+            }
+        }
+        document.addEventListener("keydown", (e) => { if(e.code==="Space") jump(); });
+        document.addEventListener("mousedown", jump);
+
+        init();
+    </script>
+</body>
+</html>
